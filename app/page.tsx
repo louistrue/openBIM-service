@@ -91,7 +91,13 @@ export default function Home() {
                   Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Level
+                  Net Volume
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Gross Volume
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Materials
                 </th>
               </tr>
             </thead>
@@ -108,7 +114,24 @@ export default function Home() {
                     {element.name || "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {element.level || "-"}
+                    {typeof element.netVolume === "number"
+                      ? `${element.netVolume.toFixed(2)} m³`
+                      : "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {typeof element.grossVolume === "number"
+                      ? `${element.grossVolume.toFixed(2)} m³`
+                      : "-"}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    <div className="space-y-1">
+                      {element.materials.map((material, idx) => (
+                        <div key={idx}>
+                          {material.name}: {material.volume.toFixed(2)} m³ (
+                          {(material.fraction * 100).toFixed(1)}%)
+                        </div>
+                      ))}
+                    </div>
                   </td>
                 </tr>
               ))}
