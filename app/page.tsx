@@ -1,16 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import dynamic from "next/dynamic";
-import { ProcessedIFC } from "@/app/types/ifc";
-
-// Dynamically import the IFCViewer component to avoid SSR issues with WebGPU
-const IFCViewer = dynamic(() => import("@/app/components/IFCViewer"), {
-  ssr: false,
-});
+import { useEffect, useState } from "react";
+import { IFCElement } from "./types/elements";
 
 export default function Home() {
-  const [ifcData, setIfcData] = useState<ProcessedIFC | null>(null);
+  const [elements, setElements] = useState<IFCElement[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,55 +31,95 @@ export default function Home() {
       }
 
       const data = await response.json();
-      setIfcData(data);
+      if (!data.elements) {
+        throw new Error("No elements data received from server");
+      }
+      setElements(data.elements);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
+      setElements([]); // Reset elements on error
     } finally {
       setLoading(false);
     }
   };
 
+  if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
-        <h1 className="text-4xl font-bold mb-8">IFC Viewer</h1>
+    <main className="p-4">
+      <h1 className="text-2xl font-bold mb-4">IFC Building Elements</h1>
 
-        <div className="mb-8">
-          <label className="block text-sm font-medium mb-2">
-            Upload IFC File
-          </label>
-          <input
-            type="file"
-            accept=".ifc"
-            onChange={handleFileUpload}
-            className="block w-full text-sm text-slate-500
-              file:mr-4 file:py-2 file:px-4
-              file:rounded-full file:border-0
-              file:text-sm file:font-semibold
-              file:bg-violet-50 file:text-violet-700
-              hover:file:bg-violet-100"
-          />
-        </div>
-
-        {loading && (
-          <div className="text-center mb-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
-            <p className="mt-2">Processing IFC file...</p>
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-8">
-            {error}
-          </div>
-        )}
-
-        {ifcData && (
-          <div className="w-full aspect-video bg-gray-100 rounded-lg overflow-hidden">
-            <IFCViewer data={ifcData} />
-          </div>
-        )}
+      {/* Upload Section */}
+      <div className="mb-8">
+        <label className="block text-sm font-medium mb-2">
+          Upload IFC File
+        </label>
+        <input
+          type="file"
+          accept=".ifc"
+          onChange={handleFileUpload}
+          className="block w-full text-sm text-slate-500
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-full file:border-0
+            file:text-sm file:font-semibold
+            file:bg-violet-50 file:text-violet-700
+            hover:file:bg-violet-100"
+        />
       </div>
+
+      {/* Loading Indicator */}
+      {loading && (
+        <div className="text-center mb-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto"></div>
+          <p className="mt-2">Processing IFC file...</p>
+        </div>
+      )}
+
+      {/* Elements Table */}
+      {elements.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="min-w-full bg-white border border-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  ID
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Level
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {elements.map((element) => (
+                <tr key={element.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {element.id}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {element.type}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {element.name || "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {element.level || "-"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="text-center text-gray-500">
+          Upload an IFC file to view elements
+        </div>
+      )}
     </main>
   );
 }

@@ -1,13 +1,13 @@
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
 import ifcopenshell
-import ifcopenshell.geom
-import numpy as np
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel
-import uuid
+import tempfile
 import os
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -20,115 +20,86 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class Mesh(BaseModel):
-    vertices: List[List[float]]
-    indices: List[int]
-    normals: Optional[List[List[float]]]
-    colors: Optional[List[List[float]]]
-    material_id: Optional[str]
-
-class ProcessedIFC(BaseModel):
-    meshes: List[Mesh]
-    bounds: List[List[float]]
-    element_count: int
-
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
-
-def process_ifc_file(file_path: Path) -> ProcessedIFC:
-    """Process an IFC file and extract geometry data."""
-    ifc_file = ifcopenshell.open(str(file_path))
-    settings = ifcopenshell.geom.settings()
-    settings.set(settings.USE_WORLD_COORDS, True)
-    
-    meshes: List[Mesh] = []
-    min_bounds = np.array([float('inf')] * 3)
-    max_bounds = np.array([float('-inf')] * 3)
-    
-    for product in ifc_file.by_type("IfcProduct"):
-        if not product.Representation:
-            continue
-            
-        try:
-            # Create shape from product
-            shape = ifcopenshell.geom.create_shape(settings, product)
-            
-            # Get geometry data from shape
-            geometry = shape.geometry
-            if not geometry:
-                continue
-                
-            # Extract vertices and faces
-            verts = np.array(geometry.verts).reshape(-1, 3)
-            faces = np.array(geometry.faces).reshape(-1, 3)
-            
-            # Update bounds
-            min_bounds = np.minimum(min_bounds, verts.min(axis=0))
-            max_bounds = np.maximum(max_bounds, verts.max(axis=0))
-            
-            # Calculate normals
-            normals = calculate_normals(verts, faces)
-            
-            meshes.append(Mesh(
-                vertices=verts.tolist(),
-                indices=faces.flatten().tolist(),
-                normals=normals.tolist(),
-                colors=None,
-                material_id=str(uuid.uuid4())
-            ))
-        except Exception as e:
-            print(f"Error processing element {product.id()}: {e}")
-            continue
-    
-    # Handle case where no valid geometry was found
-    if len(meshes) == 0 or np.any(np.isinf(min_bounds)) or np.any(np.isinf(max_bounds)):
-        min_bounds = np.zeros(3)
-        max_bounds = np.zeros(3)
-    
-    return ProcessedIFC(
-        meshes=meshes,
-        bounds=[min_bounds.tolist(), max_bounds.tolist()],
-        element_count=len(meshes)
-    )
-
-def calculate_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
-    """Calculate vertex normals for a mesh."""
-    normals = np.zeros_like(vertices)
-    
-    for face in faces:
-        v0, v1, v2 = vertices[face]
-        normal = np.cross(v1 - v0, v2 - v0)
-        normals[face] += normal
-    
-    # Normalize
-    norms = np.linalg.norm(normals, axis=1)
-    norms[norms == 0] = 1
-    normals = normals / norms[:, np.newaxis]
-    
-    return normals
-
 @app.post("/api/process-ifc")
-async def process_ifc(file: UploadFile) -> ProcessedIFC:
-    """Process an uploaded IFC file."""
-    if not file.filename.endswith('.ifc'):
-        raise HTTPException(400, "File must be an IFC file")
-    
-    file_path = UPLOAD_DIR / f"{uuid.uuid4()}.ifc"
+async def process_ifc(file: UploadFile = File(...)):
+    tmp_file = None
     try:
-        # Save uploaded file
-        with open(file_path, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
+        # Log the uploaded file info
+        logger.info(f"Processing file: {file.filename}")
         
-        # Process file
-        result = process_ifc_file(file_path)
-        return result
-    
-    finally:
-        if file_path.exists():
-            os.unlink(file_path)
+        # Create a temporary file to store the uploaded IFC
+        tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.ifc')
+        content = await file.read()
+        tmp_file.write(content)
+        tmp_file.flush()
+        
+        logger.info(f"Temporary file created: {tmp_file.name}")
+        
+        try:
+            # Parse IFC file using IfcOpenShell
+            ifc_file = ifcopenshell.open(tmp_file.name)
+            logger.info("IFC file opened successfully")
+            
+            # Get all building elements
+            elements = []
+            building_elements = ifc_file.by_type("IfcBuildingElement")
+            logger.info(f"Found {len(building_elements)} building elements")
+            
+            for element in building_elements:
+                try:
+                    # Get element properties
+                    props = {}
+                    if hasattr(element, 'IsDefinedBy'):
+                        for definition in element.IsDefinedBy:
+                            if hasattr(definition, 'RelatingPropertyDefinition'):
+                                prop_set = definition.RelatingPropertyDefinition
+                                if hasattr(prop_set, 'HasProperties'):
+                                    for prop in prop_set.HasProperties:
+                                        if hasattr(prop, 'Name') and hasattr(prop, 'NominalValue'):
+                                            props[prop.Name] = prop.NominalValue.wrappedValue
 
-@app.get("/api/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"} 
+                    # Get element level (building storey)
+                    level = None
+                    if hasattr(element, 'ContainedInStructure'):
+                        containers = element.ContainedInStructure
+                        if containers and hasattr(containers[0], 'RelatingStructure'):
+                            level = containers[0].RelatingStructure.Name
+
+                    element_data = {
+                        "id": str(element.id()),
+                        "type": element.is_a(),
+                        "name": element.Name if hasattr(element, 'Name') else None,
+                        "level": level,
+                        "properties": props
+                    }
+                    elements.append(element_data)
+                    
+                except Exception as element_error:
+                    logger.error(f"Error processing element {element.id()}: {str(element_error)}")
+                    continue
+
+            logger.info(f"Successfully processed {len(elements)} elements")
+            return {"elements": elements}
+
+        except Exception as ifc_error:
+            logger.error(f"Error processing IFC file: {str(ifc_error)}")
+            raise HTTPException(status_code=500, detail=f"Error processing IFC file: {str(ifc_error)}")
+
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    finally:
+        # Clean up temporary file
+        if tmp_file:
+            try:
+                tmp_file.close()
+                os.unlink(tmp_file.name)
+                logger.info("Temporary file cleaned up")
+            except Exception as cleanup_error:
+                logger.error(f"Error cleaning up temporary file: {str(cleanup_error)}")
+
+@app.get("/api/elements/{file_id}")
+async def get_elements(file_id: str):
+    # TODO: Implement persistent storage and retrieval of parsed elements
+    return {"message": "Not implemented yet"} 
