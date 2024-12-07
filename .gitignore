@@ -7,6 +7,10 @@
 # Testing
 /coverage
 
+# Test outputs
+tests/output/
+tests/data/
+
 # Next.js
 /.next/
 /out/
@@ -79,5 +83,13 @@ desktop.ini
 *.tsbuildinfo
 next-env.d.ts
 
-# WebGPU shader compilation cache
-.webgpu-cache/
+# Python venv
+venv/
+env/
+.env/
+.venv/
+ENV/
+
+# Egg Info
+*.egg-info/
+*.egg-info/*
