@@ -1,134 +1,141 @@
-# IFC Service
+# IFC Processing API
 
-A modern web application for viewing IFC (Industry Foundation Classes) files using WebGPU and IfcOpenShell. Features a Next.js frontend with a FastAPI backend for efficient IFC processing and visualization.
+A FastAPI-based API for processing IFC (Industry Foundation Classes) files using IfcOpenShell.
 
 ## Features
 
-- 🚀 High-performance WebGPU rendering
-- 🏗️ IFC file processing with IfcOpenShell
-- 🎯 _3D navigation controls_
-- 📱 Responsive design
-- 🎨 _Modern UI with standard BIM views_
-
-_Not fully working yet_
-
-## Tech Stack
-
-### Frontend
-
-- Next.js 14 with App Router
-- TypeScript
-- WebGPU for hardware-accelerated rendering
-- Tailwind CSS for styling
-
-### Backend
-
-- FastAPI
-- IfcOpenShell for IFC processing
-- NumPy for geometry calculations
-- Python 3.10+
+- 🔍 IFC file processing with IfcOpenShell
+- 📊 Extract building element properties and quantities
+- 🏢 Split IFC files by storey
+- 📏 Automatic unit conversion
+- 🏗️ Building element information including:
+  - Geometry (volume, area, dimensions)
+  - Materials and their volumes
+  - Properties (loadBearing, isExternal)
+  - Building storey assignment
 
 ## Prerequisites
 
-- Node.js 18+
 - Python 3.10+
-- A WebGPU-capable browser (Chrome/Edge Canary with appropriate flags)
-- Git
+- pip
 
 ## Installation
 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/louistrue/ifc-webgpu.git
-cd ifc-webgpu
+git clone <repository-url>
+cd <repository-name>
 ```
 
-2. Install frontend dependencies:
+2. Create and activate virtual environment:
 
 ```bash
-npm install
-```
-
-3. Set up the Python backend:
-
-```bash
-cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows: .\venv\Scripts\activate
-pip install -r requirements.txt
+source venv/bin/activate  # Linux/Mac
+.\venv\Scripts\activate   # Windows
 ```
+
+3. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-dev.txt  # For development
+```
+
+4. Set up your API key:
+
+Create a `.env` file in the project root:
+
+```bash
+API_KEY=your-api-key-here
+```
+
+This API key is required for all API requests and tests.
 
 ## Development
 
-1. Start the backend server:
+Start the development server:
 
 ```bash
-cd backend
-uvicorn app:app --reload
+python run.py
 ```
 
-2. Start the frontend development server:
+The API will be available at http://localhost:8000
+
+## Testing
+
+Run tests using pytest:
 
 ```bash
-npm run dev
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov=app tests/
+
+# Run specific test file
+pytest tests/test_endpoints.py
 ```
 
-3. Open http://localhost:3000 in your browser
+Test outputs are saved in `tests/output/` directory, including:
 
-## Usage
+- Process results in JSONL format
+- Error responses in JSON format
 
-### Navigation Controls (not fully working yet)
+## Project Structure
 
-- **Left Mouse Button**: Orbit around model
-- **Right/Middle Mouse Button**: Pan
-- **Mouse Wheel**: Zoom in/out
-- **Keyboard Shortcuts**:
-  - F: Front view
-  - T: Top view
-  - S: Side view
-  - R: Reset to default 45° view
-
-### Features
-
-- Upload and view IFC files
-- Standard BIM viewing angles
-- Real-time navigation
-- High-performance rendering
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+```
+app/
+├── main.py              # FastAPI application entry point
+├── api/
+│   ├── routes/
+│   │   └── ifc_routes.py # API endpoints
+├── core/
+│   ├── config.py        # Application settings
+│   ├── security.py      # API key authentication & rate limiting
+│   └── models/          # Pydantic data models
+│       └── ifc.py       # IFC-related data models
+└── services/
+    ├── ifc/            # IFC processing services
+    │   ├── properties.py  # Element property extraction
+    │   ├── quantities.py  # Geometric quantities
+    │   ├── splitter.py    # IFC model splitting
+    │   └── units.py       # Unit conversion utilities
+    └── lca/            # Life Cycle Assessment
+        └── materials.py   # Material processing
+tests/
+├── conftest.py         # Pytest configuration
+├── test_endpoints.py   # API tests
+└── output/            # Test results and logs
+```
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). This means:
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0) - see the [LICENSE](LICENSE) file for details.
 
-### You are free to:
+## Contributing
 
-- Use the software for any purpose
-- Change the software to suit your needs
-- Share the software with others
-- Share the changes you make
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to:
 
-### You must:
+- Set up your development environment
+- Follow our code style guidelines
+- Submit pull requests
+- Report issues
 
-- Make available the complete source code when you distribute the software
-- Include a copy of the AGPL-3.0 license with the software
-- State changes you made to the software
-- Make available the complete source code of any network-delivered applications that use the software
+By contributing, you agree that your contributions will be licensed under the AGPL-3.0 License.
 
-### Additional Terms:
+## Credits
 
-- This is not legal advice. For a full understanding of your rights and obligations under the AGPL-3.0, consult the full license text or a legal professional.
-- The full license text can be found in the LICENSE file or at: https://www.gnu.org/licenses/agpl-3.0.html
+This project is built on top of several excellent open-source projects:
 
-## Acknowledgments
+- [IfcOpenShell](https://ifcopenshell.org/) - The core IFC processing library (LGPL-3.0)
+- [FastAPI](https://fastapi.tiangolo.com/) - Modern web framework for building APIs (MIT)
+- [Pydantic](https://docs.pydantic.dev/) - Data validation using Python type annotations (MIT)
+- [pytest](https://docs.pytest.org/) - Testing framework (MIT)
+- [uvicorn](https://www.uvicorn.org/) - Lightning-fast ASGI server (BSD-3-Clause)
 
-- [IfcOpenShell](http://ifcopenshell.org/) for IFC file processing
-- [WebGPU](https://gpuweb.github.io/gpuweb/) for modern graphics rendering
-- The open-source community for various tools and libraries used in this project
+Special thanks to:
+
+- The IfcOpenShell community for their excellent IFC processing tools and documentation
+- All contributors to the dependencies that make this project possible
