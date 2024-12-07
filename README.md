@@ -124,3 +124,18 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for deta
 - Report issues
 
 By contributing, you agree that your contributions will be licensed under the AGPL-3.0 License.
+
+## Credits
+
+This project is built on top of several excellent open-source projects:
+
+- [IfcOpenShell](https://ifcopenshell.org/) - The core IFC processing library (LGPL-3.0)
+- [FastAPI](https://fastapi.tiangolo.com/) - Modern web framework for building APIs (MIT)
+- [Pydantic](https://docs.pydantic.dev/) - Data validation using Python type annotations (MIT)
+- [pytest](https://docs.pytest.org/) - Testing framework (MIT)
+- [uvicorn](https://www.uvicorn.org/) - Lightning-fast ASGI server (BSD-3-Clause)
+
+Special thanks to:
+
+- The IfcOpenShell community for their excellent IFC processing tools and documentation
+- All contributors to the dependencies that make this project possible
