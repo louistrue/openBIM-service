@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { IFCElement } from "./types/elements";
+import TestConsole from "./components/TestConsole";
 
 export default function Home() {
   const [elements, setElements] = useState<IFCElement[]>([]);
@@ -174,6 +175,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* Test Console */}
+      <TestConsole />
 
       {/* Elements Table */}
       {elements.length > 0 ? (
