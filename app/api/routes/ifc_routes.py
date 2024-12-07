@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 import tempfile
 import os
@@ -17,8 +17,9 @@ from app.services.ifc.splitter import StoreySpiltterService
 from app.services.ifc.units import get_project_units, convert_unit_value, LengthUnit
 import zipfile
 import shutil
+from app.core.security import get_api_key
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_api_key)])
 logger = logging.getLogger(__name__)
 
 @router.post("/process")

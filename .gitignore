@@ -93,3 +93,7 @@ ENV/
 # Egg Info
 *.egg-info/
 *.egg-info/*
+
+# Environment variables
+.env
+tests/.env.test

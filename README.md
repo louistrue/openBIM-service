@@ -43,6 +43,16 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt  # For development
 ```
 
+4. Set up your API key:
+
+Create a `.env` file in the project root:
+
+```bash
+API_KEY=your-api-key-here
+```
+
+This API key is required for all API requests and tests.
+
 ## Development
 
 Start the development server:
@@ -81,10 +91,11 @@ app/
 ├── api/
 │   ├── routes/
 │   │   └── ifc_routes.py # API endpoints
-│   └── schemas/
-│       └── ifc.py        # API request/response models
 ├── core/
-│   └── config.py        # Application settings
+│   ├── config.py        # Application settings
+│   ├── security.py      # API key authentication & rate limiting
+│   └── models/          # Pydantic data models
+│       └── ifc.py       # IFC-related data models
 └── services/
     ├── ifc/            # IFC processing services
     │   ├── properties.py  # Element property extraction
@@ -94,10 +105,22 @@ app/
     └── lca/            # Life Cycle Assessment
         └── materials.py   # Material processing
 tests/
-├── test_endpoints.py    # API tests
-└── output/             # Test results and logs
+├── conftest.py         # Pytest configuration
+├── test_endpoints.py   # API tests
+└── output/            # Test results and logs
 ```
 
 ## License
 
 This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0) - see the [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to:
+
+- Set up your development environment
+- Follow our code style guidelines
+- Submit pull requests
+- Report issues
+
+By contributing, you agree that your contributions will be licensed under the AGPL-3.0 License.

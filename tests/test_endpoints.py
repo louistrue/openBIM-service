@@ -4,12 +4,32 @@ from app.main import app
 import os
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+import pathlib
+
+# Debug environment loading
+env_path = pathlib.Path('.env')
+print(f"Looking for .env at: {env_path.absolute()}")
+print(f"File exists: {env_path.exists()}")
+
+# Load environment variables from .env
+load_dotenv(verbose=True)  # Added verbose flag
+
+# Debug loaded environment
+print(f"API_KEY in environment: {os.getenv('API_KEY')}")
 
 # Create output directory for test results
 OUTPUT_DIR = os.path.join("tests", "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 client = TestClient(app)
+
+# Get API key from environment
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    pytest.skip(allow_module_level=True, reason="API_KEY must be set in .env file")
+
+HEADERS = {"X-API-Key": API_KEY}
 
 @pytest.fixture
 def test_ifc():
@@ -24,7 +44,8 @@ def test_process_ifc(test_ifc):
     with open(test_ifc, "rb") as f:
         response = client.post(
             "/api/ifc/process",
-            files={"file": ("4_DT.ifc", f, "application/x-step")}
+            files={"file": ("4_DT.ifc", f, "application/x-step")},
+            headers=HEADERS
         )
         
     # Save all responses
@@ -51,7 +72,8 @@ def test_split_by_storey(test_ifc):
     with open(test_ifc, "rb") as f:
         response = client.post(
             "/api/ifc/split-by-storey",
-            files={"file": ("4_DT.ifc", f, "application/x-step")}
+            files={"file": ("4_DT.ifc", f, "application/x-step")},
+            headers=HEADERS
         )
     
     assert response.status_code == 200
@@ -76,10 +98,12 @@ def test_invalid_file():
     with open("tests/data/invalid.txt", "rb") as f:
         response = client.post(
             "/api/ifc/process",
-            files={"file": ("invalid.txt", f, "text/plain")}
+            files={"file": ("invalid.txt", f, "text/plain")},
+            headers=HEADERS
         )
     
     assert response.status_code == 400
+    assert "Invalid file type" in response.json()["detail"]
     
     # Save error response
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -91,3 +115,18 @@ def test_invalid_file():
     # Cleanup
     if os.path.exists("tests/data/invalid.txt"):
         os.remove("tests/data/invalid.txt")
+
+def test_missing_api_key():
+    """Test request without API key"""
+    response = client.post("/api/ifc/process")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing API Key"
+
+def test_invalid_api_key():
+    """Test request with invalid API key"""
+    response = client.post(
+        "/api/ifc/process",
+        headers={"X-API-Key": "invalid-key"}
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing API Key"
