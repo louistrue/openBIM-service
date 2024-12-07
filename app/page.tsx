@@ -253,16 +253,24 @@ export default function Home() {
                     {element.name || "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {element.netVolume?.toFixed(3) || "-"}
+                    {element.netVolume
+                      ? (element.netVolume / 1000000000).toFixed(3)
+                      : "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {element.grossVolume?.toFixed(3) || "-"}
+                    {element.grossVolume
+                      ? (element.grossVolume / 1000000000).toFixed(3)
+                      : "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {element.netArea?.toFixed(3) || "-"}
+                    {element.netArea
+                      ? (element.netArea / 1000000).toFixed(3)
+                      : "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {element.grossArea?.toFixed(3) || "-"}
+                    {element.grossArea
+                      ? (element.grossArea / 1000000).toFixed(3)
+                      : "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                     {element.loadBearing === null
@@ -282,20 +290,21 @@ export default function Home() {
                     <ul>
                       {element.materials.map((material, index) => (
                         <li key={index}>
-                          {material.name}: {material.volume.toFixed(3)}m³ (
+                          {material.name}:{" "}
+                          {(material.volume / 1000000000).toFixed(3)}m³ (
                           {(material.fraction * 100).toFixed(1)}%)
                         </li>
                       ))}
                     </ul>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {element.length?.toFixed(3) || "-"}
+                    {element.length ? (element.length / 1000).toFixed(3) : "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {element.width?.toFixed(3) || "-"}
+                    {element.width ? (element.width / 1000).toFixed(3) : "-"}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                    {element.height?.toFixed(3) || "-"}
+                    {element.height ? (element.height / 1000).toFixed(3) : "-"}
                   </td>
                 </tr>
               ))}

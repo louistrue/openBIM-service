@@ -7,10 +7,15 @@ import tempfile
 import os
 import logging
 from functools import lru_cache
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import asyncio
 from fastapi.responses import StreamingResponse
 import json
+import multiprocessing
+from multiprocessing import Manager, Value
+import ctypes
+from typing import Literal, Optional, Dict, Any
+from enum import Enum
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -115,6 +120,10 @@ def get_layer_volumes_and_materials(model, element, volumes, unit_scale_to_mm):
     # Prefer net volume, fallback to gross volume
     total_volume = volumes["net"] if volumes["net"] is not None else volumes["gross"]
     
+    if total_volume is not None:
+        # Convert total_volume to mm³ if it isn't already
+        total_volume = total_volume * (unit_scale_to_mm ** 3)
+    
     if element.HasAssociations:
         for association in element.HasAssociations:
             if association.is_a('IfcRelAssociatesMaterial'):
@@ -127,7 +136,7 @@ def get_layer_volumes_and_materials(model, element, volumes, unit_scale_to_mm):
                         layer_volume = total_volume * fraction if total_volume else 0
                         material_layers.append({
                             "name": layer.Material.Name if layer.Material else "Unnamed Material",
-                            "volume": round(layer_volume, 5),
+                            "volume": layer_volume,  # Already in mm³
                             "fraction": fraction
                         })
 
@@ -140,22 +149,22 @@ def get_layer_volumes_and_materials(model, element, volumes, unit_scale_to_mm):
                         material_volume = total_volume * fraction if total_volume else 0
                         material_layers.append({
                             "name": constituent.Material.Name if constituent.Material else "Unnamed Material",
-                            "volume": round(material_volume, 5),
+                            "volume": material_volume,  # Already in mm³
                             "fraction": fraction
                         })
 
-    if not material_layers:
+    if not material_layers and total_volume is not None:
         materials = ifcopenshell.util.element.get_materials(element)
         if materials:
             material_layers.append({
                 "name": materials[0].Name if materials[0].Name else "Unnamed Material",
-                "volume": total_volume if total_volume is not None else 0,
+                "volume": total_volume,  # Already in mm³
                 "fraction": 1.0
             })
         else:
             material_layers.append({
                 "name": "No Material",
-                "volume": total_volume if total_volume is not None else 0,
+                "volume": total_volume,  # Already in mm³
                 "fraction": 1.0
             })
 
@@ -300,18 +309,38 @@ def get_object_type(element):
     
     return object_type
 
-async def process_element(element, ifc_file, unit_scale_to_mm):
+# Modify the initialization function
+def init_ifcopenshell(file_path: str, scale: float):
+    """Initialize ifcopenshell in each process"""
+    global ifc_file, unit_scale
     try:
+        ifc_file = ifcopenshell.open(file_path)
+        unit_scale = scale
+    except Exception as e:
+        logger.error(f"Error initializing process: {str(e)}")
+        ifc_file = None
+        unit_scale = 1.0
+
+def process_element_parallel(element_id):
+    """Process a single element in parallel"""
+    try:
+        element = ifc_file.by_id(element_id)
+        if not element:
+            return None
+
+        # Get all properties first
         volumes = get_volume_from_properties(element)
         areas = get_area_from_properties(element)
         dimensions = get_dimensions_from_properties(element)
-        materials = get_layer_volumes_and_materials(ifc_file, element, volumes, unit_scale_to_mm)
+        materials = get_layer_volumes_and_materials(ifc_file, element, volumes, unit_scale)
         common_props = get_common_properties(element)
         
-        # Get GlobalId
+        # Get basic properties that don't need complex objects
         global_id = element.GlobalId if hasattr(element, 'GlobalId') else None
+        element_type = element.is_a()
+        element_name = element.Name if hasattr(element, 'Name') else None
         
-        # Get predefined type - Fixed error handling
+        # Get predefined type safely
         try:
             predefined_type = getattr(element, "PredefinedType", None)
             if predefined_type:
@@ -319,22 +348,44 @@ async def process_element(element, ifc_file, unit_scale_to_mm):
                     if predefined_type.is_a() == "IfcLabel":
                         predefined_type = predefined_type.wrappedValue
                 else:
-                    # If predefined_type is a string, use it directly
                     predefined_type = str(predefined_type)
-        except Exception as type_error:
-            logger.debug(f"Could not get predefined type for element {element.id()}: {str(type_error)}")
+        except Exception:
             predefined_type = None
             
-        # Get object type
         object_type = get_object_type(element)
         
+        # Convert measurements to mm
+        volume_scale = unit_scale ** 3  # For volumes (m³ to mm³)
+        area_scale = unit_scale ** 2    # For areas (m² to mm²)
+        
+        # Scale volumes
+        if volumes["net"] is not None:
+            volumes["net"] *= volume_scale
+        if volumes["gross"] is not None:
+            volumes["gross"] *= volume_scale
+            
+        # Scale areas
+        if areas["net"] is not None:
+            areas["net"] *= area_scale
+        if areas["gross"] is not None:
+            areas["gross"] *= area_scale
+            
+        # Scale linear dimensions
+        if dimensions["length"] is not None:
+            dimensions["length"] *= unit_scale
+        if dimensions["width"] is not None:
+            dimensions["width"] *= unit_scale
+        if dimensions["height"] is not None:
+            dimensions["height"] *= unit_scale
+        
+        # Create result dictionary with only serializable data
         return {
-            "id": str(element.id()),
+            "id": str(element_id),
             "globalId": global_id,
-            "type": element.is_a(),
+            "type": element_type,
             "predefinedType": predefined_type,
             "objectType": object_type,
-            "name": element.Name if hasattr(element, 'Name') else None,
+            "name": element_name,
             "level": None,
             "volume": volumes["net"] if volumes["net"] is not None else (volumes["gross"] if volumes["gross"] is not None else 0),
             "netVolume": volumes["net"] if volumes["net"] is not None else None,
@@ -349,9 +400,10 @@ async def process_element(element, ifc_file, unit_scale_to_mm):
             "isExternal": common_props["isExternal"]
         }
     except Exception as element_error:
-        logger.error(f"Error processing element {element.id()}: {str(element_error)}")
+        logger.error(f"Error processing element {element_id}: {str(element_error)}")
         return None
 
+# Modify the process_ifc endpoint
 @app.post("/api/process-ifc")
 async def process_ifc(file: UploadFile = File(...)):
     tmp_file_path = None
@@ -366,51 +418,52 @@ async def process_ifc(file: UploadFile = File(...)):
         
         async def process_and_stream():
             try:
-                ifc_file = ifcopenshell.open(tmp_file_path)
+                main_ifc = ifcopenshell.open(tmp_file_path)
                 logger.info("IFC file opened successfully")
                 
-                unit_scale_to_mm = calculate_unit_scale(ifc_file) * 1000.0
-                building_elements = ifc_file.by_type("IfcBuildingElement")
+                # Calculate unit scale
+                unit_scale = calculate_unit_scale(main_ifc) * 1000.0  # Convert to mm
+                logger.info(f"Unit scale factor to mm: {unit_scale}")
+                
+                building_elements = main_ifc.by_type("IfcBuildingElement")
                 total_elements = len(building_elements)
                 logger.info(f"Found {total_elements} building elements")
                 
-                # Send initial status
-                yield json.dumps({
-                    "progress": 0,
-                    "processed": 0,
-                    "total": total_elements,
-                    "status": "processing"
-                }) + "\n"
-                
-                chunk_size = 500
+                # Get element IDs
+                element_ids = [element.id() for element in building_elements]
+                chunk_size = 1000
                 elements = []
                 processed_count = 0
                 
-                for i in range(0, total_elements, chunk_size):
-                    chunk = building_elements[i:i + chunk_size]
-                    tasks = [
-                        process_element(element, ifc_file, unit_scale_to_mm)
-                        for element in chunk
-                    ]
-                    chunk_results = await asyncio.gather(*tasks)
-                    valid_results = [e for e in chunk_results if e is not None]
-                    elements.extend(valid_results)
-                    
-                    processed_count += len(chunk)
-                    progress = min(processed_count / total_elements * 100, 100)
-                    
-                    # Send progress update with explicit newline
-                    yield json.dumps({
-                        "progress": progress,
-                        "processed": processed_count,
-                        "total": total_elements,
-                        "status": "processing"
-                    }, ensure_ascii=False).strip() + "\n"
-                    
-                    # Reduced delay
-                    await asyncio.sleep(0.05)  # Reduced from 0.1 to 0.05
+                # Use ProcessPoolExecutor
+                num_processes = max(multiprocessing.cpu_count() - 1, 1)
                 
-                # Send final result with explicit newline
+                with ProcessPoolExecutor(
+                    max_workers=num_processes,
+                    initializer=init_ifcopenshell,
+                    initargs=(tmp_file_path, unit_scale)
+                ) as executor:
+                    futures = []
+                    for i in range(0, total_elements, chunk_size):
+                        chunk_ids = element_ids[i:i + chunk_size]
+                        future = executor.submit(process_chunk, chunk_ids)
+                        futures.append(future)
+                    
+                    for future in futures:
+                        chunk_results = future.result()
+                        valid_results = [r for r in chunk_results if r is not None]
+                        elements.extend(valid_results)
+                        
+                        processed_count += chunk_size
+                        progress = min(processed_count / total_elements * 100, 100)
+                        
+                        yield json.dumps({
+                            "progress": progress,
+                            "processed": min(processed_count, total_elements),
+                            "total": total_elements,
+                            "status": "processing"
+                        }, ensure_ascii=False).strip() + "\n"
+                
                 yield json.dumps({
                     "progress": 100,
                     "processed": total_elements,
@@ -425,7 +478,6 @@ async def process_ifc(file: UploadFile = File(...)):
                     "status": "error",
                     "error": str(e)
                 }, ensure_ascii=False).strip() + "\n"
-                
             finally:
                 if tmp_file_path:
                     try:
@@ -447,6 +499,113 @@ async def process_ifc(file: UploadFile = File(...)):
         logger.error(f"Unexpected error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def process_chunk(chunk_ids):
+    """Process a chunk of elements"""
+    results = []
+    for element_id in chunk_ids:
+        try:
+            element = ifc_file.by_id(element_id)
+            if element:
+                result = process_element_parallel(element_id)
+                if result:
+                    results.append(result)
+        except Exception as e:
+            logger.error(f"Error processing element {element_id}: {str(e)}")
+    return results
+
 @app.get("/api/elements/{file_id}")
 async def get_elements(file_id: str):
     return {"message": "Not implemented yet"} 
+
+# Define unit types
+class LengthUnit(str, Enum):
+    ATTOMETER = "ATTOMETER"
+    FEMTOMETER = "FEMTOMETER"
+    PICOMETER = "PICOMETER"
+    NANOMETER = "NANOMETER"
+    MICROMETER = "MICROMETER"
+    MILLIMETER = "MILLIMETER"
+    CENTIMETER = "CENTIMETER"
+    DECIMETER = "DECIMETER"
+    METER = "METER"
+    DECAMETER = "DECAMETER"
+    HECTOMETER = "HECTOMETER"
+    KILOMETER = "KILOMETER"
+    MEGAMETER = "MEGAMETER"
+    GIGAMETER = "GIGAMETER"
+    TERAMETER = "TERAMETER"
+    PETAMETER = "PETAMETER"
+    EXAMETER = "EXAMETER"
+    INCH = "INCH"
+    FOOT = "FOOT"
+    MILE = "MILE"
+
+def get_project_units(ifc_file: ifcopenshell.file) -> Dict[str, Any]:
+    """Get all project units from IFC file"""
+    units = {}
+    project = ifc_file.by_type("IfcProject")[0]
+    for context in project.UnitsInContext.Units:
+        if context.is_a("IfcSIUnit"):
+            units[context.UnitType] = {
+                "type": context.UnitType,
+                "name": context.Name,
+                "prefix": getattr(context, "Prefix", None),
+            }
+        elif context.is_a("IfcConversionBasedUnit"):
+            units[context.UnitType] = {
+                "type": context.UnitType,
+                "name": context.Name,
+                "conversion_factor": context.ConversionFactor.ValueComponent,
+            }
+    return units
+
+def convert_unit_value(value: float, from_unit: Dict[str, Any], to_unit: LengthUnit) -> float:
+    """Convert value from one unit to another"""
+    # First convert to meters (SI base unit)
+    if from_unit["name"] == "METRE":
+        value_in_meters = value * (10 ** (get_si_prefix_exponent(from_unit.get("prefix"))))
+    else:
+        # Handle conversion based units (like FOOT, INCH)
+        value_in_meters = value * from_unit.get("conversion_factor", 1.0)
+    
+    # Then convert to target unit
+    return convert_from_meters(value_in_meters, to_unit)
+
+def get_si_prefix_exponent(prefix: Optional[str]) -> int:
+    """Get the exponent for SI unit prefix"""
+    if not prefix:
+        return 0
+    
+    prefix_map = {
+        "EXA": 18,
+        "PETA": 15,
+        "TERA": 12,
+        "GIGA": 9,
+        "MEGA": 6,
+        "KILO": 3,
+        "HECTO": 2,
+        "DECA": 1,
+        "DECI": -1,
+        "CENTI": -2,
+        "MILLI": -3,
+        "MICRO": -6,
+        "NANO": -9,
+        "PICO": -12,
+        "FEMTO": -15,
+        "ATTO": -18,
+    }
+    return prefix_map.get(prefix, 0)
+
+def convert_from_meters(value: float, to_unit: LengthUnit) -> float:
+    """Convert value from meters to target unit"""
+    conversion_factors = {
+        LengthUnit.METER: 1,
+        LengthUnit.MILLIMETER: 1000,
+        LengthUnit.CENTIMETER: 100,
+        LengthUnit.KILOMETER: 0.001,
+        LengthUnit.INCH: 39.3701,
+        LengthUnit.FOOT: 3.28084,
+        LengthUnit.MILE: 0.000621371,
+        # Add other conversions as needed
+    }
+    return value * conversion_factors.get(to_unit, 1) 
