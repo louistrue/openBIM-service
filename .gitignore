@@ -97,3 +97,6 @@ ENV/
 # Environment variables
 .env
 tests/.env.test
+
+# Nixpacks
+!nixpacks.toml

@@ -1,0 +1,19 @@
+[phases.setup]
+nixPkgs = ['python3', 'gcc', 'nodejs', 'yarn']
+
+[phases.install]
+cmds = [
+  'python -m venv /opt/venv',
+  '. /opt/venv/bin/activate',
+  'pip install -r requirements.txt',
+  'yarn install'
+]
+
+[phases.build]
+cmds = [
+  '. /opt/venv/bin/activate',
+  'yarn build'
+]
+
+[start]
+cmd = '. /opt/venv/bin/activate && python run.py' 
