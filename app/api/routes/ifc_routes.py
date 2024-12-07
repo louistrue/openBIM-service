@@ -42,7 +42,7 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
 
         async def generate_response():
             try:
-                # Get total elements for progress tracking
+                # Get total elements for progress tracking 
                 building_elements = ifc_file.by_type("IfcBuildingElement")
                 total_elements = len(building_elements)
                 
@@ -54,8 +54,8 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                     "total": total_elements
                 }) + "\n"
                 
-                # Process elements
                 elements = []
+                last_progress = 0
                 for i, element in enumerate(building_elements, 1):
                     # Basic properties
                     element_data = {
@@ -96,13 +96,16 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
 
                     elements.append(element_data)
                     
-                    # Report progress
-                    yield json.dumps({
-                        "status": "processing",
-                        "progress": i / total_elements * 100,
-                        "processed": i,
-                        "total": total_elements
-                    }) + "\n"
+                    # Report progress at 5% intervals
+                    current_progress = (i / total_elements) * 100
+                    if current_progress >= last_progress + 5 or i == total_elements:
+                        yield json.dumps({
+                            "status": "processing",
+                            "progress": current_progress,
+                            "processed": i,
+                            "total": total_elements
+                        }) + "\n"
+                        last_progress = current_progress
 
                 # Final response with all elements
                 yield json.dumps({

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.ifc_routes import router
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.openapi.utils import get_openapi
+import uvicorn
 
 app = FastAPI(
     title="IFC Processing API",
@@ -18,6 +19,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# File upload limit
+app.state.max_upload_size = 1024 * 1024 * 1024  # 1GB
 
 # Include routes
 app.include_router(router, prefix="/api/ifc", tags=["IFC Processing"])

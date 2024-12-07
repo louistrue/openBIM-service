@@ -1,12 +1,13 @@
 [phases.setup]
-nixPkgs = ['python3', 'gcc']
+nixPkgs = ["python3", "gcc"]
 
 [phases.install]
 cmds = [
-  'python -m venv /opt/venv',
-  '. /opt/venv/bin/activate',
-  'pip install -r requirements.txt'
+  "python -m venv /opt/venv",
+  ". /opt/venv/bin/activate",
+  "pip install --upgrade pip",
+  "pip install -r requirements.txt"
 ]
 
 [start]
-cmd = '. /opt/venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}' 
+cmd = ". /opt/venv/bin/activate && export PYTHONPATH=/app && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 300 --limit-concurrency 5 --backlog 4096 --proxy-headers --forwarded-allow-ips '*'" 
