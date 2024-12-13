@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 import tempfile
 import os
@@ -17,9 +17,8 @@ from app.services.ifc.splitter import StoreySpiltterService
 from app.services.ifc.units import get_project_units, convert_unit_value, LengthUnit
 import zipfile
 import shutil
-from app.core.security import get_api_key
 
-router = APIRouter(dependencies=[Depends(get_api_key)])
+router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.post("/process")
@@ -120,13 +119,22 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                 }) + "\n"
                 raise
 
+        async def cleanup_background():
+            """Clean up files after response is sent"""
+            try:
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
+            except Exception as e:
+                logger.error(f"Error during cleanup: {str(e)}")
+
         return StreamingResponse(
             generate_response(),
             media_type="application/x-ndjson",
             headers={
                 "X-Content-Type-Options": "nosniff",
                 "Cache-Control": "no-cache"
-            }
+            },
+            background=cleanup_background
         )
 
     except Exception as e:

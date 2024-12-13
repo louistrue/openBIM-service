@@ -96,6 +96,8 @@ X-API-Key: your-api-key-here
 
 Requests without a valid API key will receive a 401 Unauthorized response.
 
+> Note: The API documentation at `/docs` is publicly accessible, but you'll need to provide an API key to test the endpoints.
+
 ## Error Responses
 
 All endpoints may return the following error responses:
@@ -105,14 +107,6 @@ All endpoints may return the following error responses:
 ```json
 {
   "detail": "Error message describing the issue"
-}
-```
-
-### 401 Unauthorized
-
-```json
-{
-  "detail": "Invalid or missing API key"
 }
 ```
 
