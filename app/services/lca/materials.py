@@ -47,8 +47,9 @@ class MaterialService:
             
             layers.append({
                 "name": layer.Material.Name if layer.Material else "Unnamed Material",
-                "volume": layer_volume,
-                "fraction": fraction
+                "volume": _round_value(layer_volume, 5),
+                "fraction": _round_fraction(fraction),
+                "width": _round_value(layer.LayerThickness)
             })
         
         return layers
@@ -97,18 +98,55 @@ class MaterialService:
 
         return materials
 
-    def get_material_volumes(self, element) -> Dict[str, float]:
-        """Get material volumes for an element."""
+    def get_material_volumes(self, element):
         volumes = get_volume_from_properties(element)
         total_volume = volumes.get("net") or volumes.get("gross") or 0.0
         
-        material_volumes = {}
         material_layers = self.get_layer_volumes_and_materials(element, total_volume)
         
-        for layer in material_layers:
-            material_volumes[layer["name"]] = {
-                "volume": layer["volume"],
-                "fraction": layer["fraction"]
+        # Create material volumes with unique keys for each layer
+        material_volumes = {}
+        
+        # If we have only one material and no layer information, try to get width from element dimensions
+        if len(material_layers) == 1 and "width" not in material_layers[0]:
+            from app.services.ifc.quantities import get_dimensions_from_properties
+            dimensions = get_dimensions_from_properties(element)
+            if dimensions and "width" in dimensions:
+                material_layers[0]["width"] = dimensions["width"]
+        
+        # Create a mapping of layer index to unique key
+        layer_to_key = {}
+        
+        for i, layer in enumerate(material_layers):
+            material_name = layer["name"]
+            # Create unique key for each layer
+            key = material_name
+            counter = 1
+            while key in material_volumes:
+                key = f"{material_name} ({counter})"
+                counter += 1
+            
+            # Store mapping of layer index to key
+            layer_to_key[i] = key
+            
+            # Copy all data from layer with rounded values
+            material_volumes[key] = {
+                "fraction": layer["fraction"],
+                "volume": _round_value(layer["volume"], 5)
             }
+            
+            # Copy width if present
+            if "width" in layer:
+                material_volumes[key]["width"] = _round_value(layer["width"])
         
         return material_volumes
+
+def _round_value(value: float, digits: int = 3) -> float:
+    """Round float value to specified number of digits."""
+    if isinstance(value, (int, float)):
+        return round(value, digits)
+    return value
+
+def _round_fraction(value: float) -> float:
+    """Round fraction to 5 digits."""
+    return _round_value(value, 5)
