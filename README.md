@@ -5,8 +5,13 @@
 [![Tests](https://img.shields.io/badge/tests-pytest-green.svg)](https://docs.pytest.org/en/stable/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109.2-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
 [![IfcOpenShell](https://img.shields.io/badge/IfcOpenShell-0.8.0-orange.svg)](https://ifcopenshell.org/)
+[![Documentation](https://img.shields.io/badge/docs-mkdocs-blue.svg)](https://louistrue.github.io/openBIM-service/)
 
 FastAPI for processing IFC (Industry Foundation Classes) using IfcOpenShell.
+
+## Documentation
+
+📚 Read the full documentation at [louistrue.github.io/openBIM-service](https://louistrue.github.io/openBIM-service/)
 
 ## Features
 
@@ -118,7 +123,7 @@ app/
     │   ├── quantities.py  # Geometric quantities
     │   ├── splitter.py    # IFC model splitting
     │   └── units.py       # Unit conversion utilities
-    └── lca/            # Life Cycle Assessment
+    └─��� lca/            # Life Cycle Assessment
         └── materials.py   # Material processing
 tests/
 ├── conftest.py         # Pytest configuration
