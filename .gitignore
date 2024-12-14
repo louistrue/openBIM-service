@@ -100,3 +100,6 @@ tests/.env.test
 
 # Nixpacks
 !nixpacks.toml
+
+# MkDocs
+site/
