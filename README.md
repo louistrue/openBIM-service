@@ -1,6 +1,12 @@
 # IFC Processing API
 
-A FastAPI-based API for processing IFC (Industry Foundation Classes) files using IfcOpenShell.
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+[![Tests](https://img.shields.io/badge/tests-pytest-green.svg)](https://docs.pytest.org/en/stable/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109.2-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
+[![IfcOpenShell](https://img.shields.io/badge/IfcOpenShell-0.8.0-orange.svg)](https://ifcopenshell.org/)
+
+FastAPI for processing IFC (Industry Foundation Classes) using IfcOpenShell.
 
 ## Features
 
@@ -13,6 +19,16 @@ A FastAPI-based API for processing IFC (Industry Foundation Classes) files using
   - Materials and their volumes
   - Properties (loadBearing, isExternal)
   - Building storey assignment
+
+## Data Privacy & Security
+
+We take data privacy seriously:
+
+- 🗑️ All uploaded files are automatically deleted after processing is complete
+- 🧹 Temporary files are completely wiped from container storage every hour
+- 🔒 Files are processed with minimal disk persistence
+- 📝 Processing logs are kept only for debugging and are regularly purged
+- 🔐 All API requests require authentication via API key
 
 ## Prerequisites
 
@@ -91,7 +107,7 @@ app/
 ├── api/
 │   ├── routes/
 │   │   └── ifc_routes.py # API endpoints
-├── core/
+├─ core/
 │   ├── config.py        # Application settings
 │   ├── security.py      # API key authentication & rate limiting
 │   └── models/          # Pydantic data models
