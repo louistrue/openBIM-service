@@ -13,9 +13,13 @@ class Settings(BaseSettings):
     API_KEY: str  # Single key for tests
     API_USER_KEYS: List[str] = []  # List of valid user keys
     
+    # PostHog settings
+    POSTHOG_API_KEY: str
+    POSTHOG_HOST: str = "https://us.i.posthog.com"
+    
     class Config:
         case_sensitive = True
         env_file = ".env"
         env_file_encoding = "utf-8"
 
-settings = Settings() 
+settings = Settings()

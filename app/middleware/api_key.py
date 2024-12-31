@@ -4,6 +4,8 @@ import os
 from dotenv import load_dotenv
 import logging
 from starlette.status import HTTP_401_UNAUTHORIZED
+from ..core.analytics import capture_pageview
+import uuid
 
 # Load environment variables
 load_dotenv()
@@ -19,6 +21,19 @@ if isinstance(API_USER_KEYS, str):
         API_USER_KEYS = []
 
 async def api_key_middleware(request: Request, call_next):
+    # Generate a unique ID for anonymous users
+    distinct_id = str(uuid.uuid4())
+    
+    # Capture pageview
+    capture_pageview(
+        distinct_id=distinct_id,
+        url=str(request.url),
+        properties={
+            'path': request.url.path,
+            'method': request.method,
+        }
+    )
+    
     # List of paths that don't require authentication
     public_paths = [
         "/docs",
