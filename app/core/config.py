@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     
     # PostHog settings
     POSTHOG_API_KEY: str
-    POSTHOG_HOST: str = "https://us.i.posthog.com"
+    POSTHOG_HOST: str = "https://eu.i.posthog.com"
     
     class Config:
         case_sensitive = True

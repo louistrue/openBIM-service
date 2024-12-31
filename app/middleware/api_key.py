@@ -24,13 +24,19 @@ async def api_key_middleware(request: Request, call_next):
     # Generate a unique ID for anonymous users
     distinct_id = str(uuid.uuid4())
     
-    # Capture pageview
+    # Get API key for tracking
+    api_key = request.headers.get("X-API-Key", "anonymous")
+    
+    # Capture pageview with more context
     capture_pageview(
         distinct_id=distinct_id,
         url=str(request.url),
         properties={
             'path': request.url.path,
             'method': request.method,
+            'api_key': api_key[:8] if api_key != "anonymous" else "anonymous",  # First 8 chars only for security
+            'has_api_key': api_key != "anonymous",
+            'referer': request.headers.get("referer", "none")
         }
     )
     
