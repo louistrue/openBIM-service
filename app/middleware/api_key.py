@@ -24,22 +24,6 @@ async def api_key_middleware(request: Request, call_next):
     # Generate a unique ID for anonymous users
     distinct_id = str(uuid.uuid4())
     
-    # Get API key for tracking
-    api_key = request.headers.get("X-API-Key", "anonymous")
-    
-    # Capture pageview with more context
-    capture_pageview(
-        distinct_id=distinct_id,
-        url=str(request.url),
-        properties={
-            'path': request.url.path,
-            'method': request.method,
-            'api_key': api_key[:8] if api_key != "anonymous" else "anonymous",  # First 8 chars only for security
-            'has_api_key': api_key != "anonymous",
-            'referer': request.headers.get("referer", "none")
-        }
-    )
-    
     # List of paths that don't require authentication
     public_paths = [
         "/docs",
@@ -57,9 +41,25 @@ async def api_key_middleware(request: Request, call_next):
     
     # Get the referer header
     referer = request.headers.get("referer", "")
+    is_docs = any(full_path.endswith(path) for path in public_paths) or "/docs" in referer
     
-    # Allow access to Swagger UI and related paths, or if request comes from Swagger UI
-    if any(full_path.endswith(path) for path in public_paths) or "/docs" in referer:
+    # Capture pageview with more context - now for all paths including docs
+    capture_pageview(
+        distinct_id=distinct_id,
+        url=str(request.url),
+        properties={
+            'path': request.url.path,
+            'method': request.method,
+            'is_docs': is_docs,
+            'is_public_path': is_docs,
+            'referer': referer,
+            'user_agent': request.headers.get("user-agent", "unknown"),
+            'api_key': "docs_user" if is_docs else (request.headers.get("X-API-Key", "anonymous")[:8]),
+        }
+    )
+    
+    # Allow access to Swagger UI and related paths without API key
+    if is_docs:
         return await call_next(request)
     
     # For all other paths, require API key
