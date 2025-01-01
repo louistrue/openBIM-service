@@ -22,24 +22,8 @@ try:
     posthog = Posthog(
         project_api_key=settings.POSTHOG_API_KEY,
         host=settings.POSTHOG_HOST,
-        debug=True
+        debug=False
     )
-    
-    # Test connection
-    test_event = {
-        'url': '/test',
-        'environment': 'development',
-        'test_id': 'startup-test'
-    }
-    
-    print(f"Sending test event: {test_event}")
-    posthog.capture(
-        distinct_id='test-user',
-        event='test-event',
-        properties=test_event
-    )
-    posthog.flush()
-    print("PostHog test event sent successfully")
     
 except Exception as e:
     print(f"PostHog Error: {e}")
