@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     # PostHog settings
     POSTHOG_API_KEY: str
     POSTHOG_HOST: str = "https://eu.i.posthog.com"
+    POSTHOG_DEBUG: bool = False
+    
+    # Environment settings
+    ENVIRONMENT: str = "development"
+    VERSION: str = "0.0.2"
     
     class Config:
         case_sensitive = True
