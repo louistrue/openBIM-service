@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 import logging
 from starlette.status import HTTP_401_UNAUTHORIZED
-from ..core.analytics import capture_pageview
+from ..core.analytics import capture_event
 import uuid
 import sys
 
@@ -81,12 +81,14 @@ async def api_key_middleware(request: Request, call_next):
     }
     
     try:
-        # Send as a custom event instead of pageview
-        capture_pageview(
+        # Use capture_event directly instead of capture_pageview since we want a custom event name
+        capture_event(
             distinct_id=distinct_id,
-            url=str(request.url),
-            properties=properties,
-            event_name='api_request'
+            event_name='api_request',
+            properties={
+                '$current_url': str(request.url),
+                **properties  # Include all our custom properties
+            }
         )
     except Exception as e:
         logger.error(f"Failed to capture analytics: {e}", exc_info=True)

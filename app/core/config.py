@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     API_USER_KEYS: List[str] = []  # List of valid user keys
     
     # PostHog settings
-    POSTHOG_API_KEY: str
-    POSTHOG_HOST: str = "https://eu.i.posthog.com"
+    POSTHOG_API_KEY: str  # Required
+    POSTHOG_HOST: str = "https://eu.posthog.com"  # Note: changed from eu.i.posthog.com
     
     class Config:
         case_sensitive = True
