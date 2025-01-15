@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query, Depends, BackgroundTasks, Form
 from typing import List, Optional, Annotated, Dict, Any
 import tempfile
 import os
@@ -8,7 +8,7 @@ import ifcopenshell
 import httpx
 import asyncio
 import uuid
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, ValidationError
 from app.services.ifc.properties import get_common_properties, get_object_type, get_model_metadata
 from app.services.ifc.quantities import (
     get_volume_from_properties,
@@ -19,6 +19,7 @@ from app.services.lca.materials import MaterialService
 from app.services.ifc.units import get_project_units, convert_unit_value
 from app.services.ifc.constituents import compute_constituent_fractions
 from .common import _round_value, get_ifc_classes
+import json
 
 def generate_unique_id() -> str:
     """Generate a unique task ID."""
@@ -28,6 +29,22 @@ def generate_unique_id() -> str:
 class CallbackConfig(BaseModel):
     url: HttpUrl
     token: str
+
+class CallbackConfigForm(BaseModel):
+    callback_config: Optional[CallbackConfig] = None
+
+    @classmethod
+    def as_form(
+        cls,
+        callback_config: Optional[str] = Form(None, description="Optional callback configuration as JSON string")
+    ):
+        if callback_config:
+            try:
+                config_dict = json.loads(callback_config)
+                return cls(callback_config=CallbackConfig(**config_dict))
+            except (json.JSONDecodeError, ValidationError):
+                return cls(callback_config=None)
+        return cls(callback_config=None)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -43,6 +60,14 @@ logger = logging.getLogger(__name__)
     - Progress updates (10%) are sent to the callback URL
     - Final results are sent to the callback URL
     - All callback requests include the provided token in Authorization header
+
+    Callback Configuration Format (optional):
+    ```json
+    {
+        "url": "https://your-callback-url.com/webhook",
+        "token": "your-callback-token"
+    }
+    ```
 
     Output Structure:
     ```json
@@ -119,7 +144,7 @@ async def extract_building_elements(
     exclude_materials: Annotated[bool, Query(description="Exclude material information")] = False,
     exclude_width: Annotated[bool, Query(description="Exclude material widths")] = False,
     exclude_constituent_volumes: Annotated[bool, Query(description="Exclude constituent volumes")] = False,
-    callback_config: Optional[CallbackConfig] = None
+    callback_data: CallbackConfigForm = Depends(CallbackConfigForm.as_form)
 ):
     """
     Extract detailed information about building elements from an IFC file.
@@ -295,13 +320,13 @@ async def extract_building_elements(
                         elements.append(element_data)
                     
                     # Send progress update if callback configured
-                    if callback_config:
+                    if callback_data.callback_config:
                         progress = min(100, int((i + len(chunk)) / total_elements * 100))
                         if progress % 10 == 0:  # Send update every 10%
                             try:
                                 await client.post(
-                                    str(callback_config.url),
-                                    headers={"Authorization": callback_config.token},
+                                    str(callback_data.callback_config.url),
+                                    headers={"Authorization": callback_data.callback_config.token},
                                     json={
                                         "status": "processing",
                                         "progress": progress,
@@ -331,11 +356,11 @@ async def extract_building_elements(
             }
 
             # Send final result if callback configured
-            if callback_config:
+            if callback_data.callback_config:
                 try:
                     await client.post(
-                        str(callback_config.url),
-                        headers={"Authorization": callback_config.token},
+                        str(callback_data.callback_config.url),
+                        headers={"Authorization": callback_data.callback_config.token},
                         json={
                             "status": "completed",
                             "progress": 100,
@@ -350,12 +375,12 @@ async def extract_building_elements(
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error processing IFC file: {error_msg}")
-            if callback_config:
+            if callback_data.callback_config:
                 try:
                     async with httpx.AsyncClient() as client:
                         await client.post(
-                            str(callback_config.url),
-                            headers={"Authorization": callback_config.token},
+                            str(callback_data.callback_config.url),
+                            headers={"Authorization": callback_data.callback_config.token},
                             json={
                                 "status": "error",
                                 "error": error_msg
@@ -369,7 +394,7 @@ async def extract_building_elements(
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
 
-    if callback_config:
+    if callback_data.callback_config:
         # Start processing in background and return immediately
         task_id = generate_unique_id()
         background_tasks.add_task(process_and_callback)
