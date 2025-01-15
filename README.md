@@ -24,6 +24,8 @@ FastAPI for processing IFC (Industry Foundation Classes) using IfcOpenShell.
   - Materials and their volumes
   - Properties (loadBearing, isExternal)
   - Building storey assignment
+- Process geometry
+- Async processing with callback support
 
 ## Data Privacy & Security
 
@@ -123,7 +125,7 @@ app/
     │   ├── quantities.py  # Geometric quantities
     │   ├── splitter.py    # IFC model splitting
     │   └── units.py       # Unit conversion utilities
-    └─��� lca/            # Life Cycle Assessment
+    └─ lca/            # Life Cycle Assessment
         └── materials.py   # Material processing
 tests/
 ├── conftest.py         # Pytest configuration
@@ -160,3 +162,63 @@ Special thanks to:
 
 - The IfcOpenShell community for their excellent IFC processing tools and documentation
 - All contributors to the dependencies that make this project possible
+
+## Callback Functionality
+
+The `/api/ifc/extract-building-elements` endpoint supports asynchronous processing with callbacks. When using callbacks:
+
+1. The endpoint returns immediately with a task ID
+2. Progress updates (10%) are sent to the callback URL
+3. Final results are sent to the callback URL
+4. All callback requests include the provided token in Authorization header
+
+### Callback Data Format
+
+Progress updates:
+
+```json
+{
+  "status": "processing",
+  "progress": 10,
+  "total_elements": 100,
+  "processed_elements": 10
+}
+```
+
+Final result:
+
+```json
+{
+    "status": "completed",
+    "progress": 100,
+    "result": {
+        "metadata": { ... },
+        "elements": [ ... ]
+    }
+}
+```
+
+Error case:
+
+```json
+{
+  "status": "error",
+  "error": "Error message"
+}
+```
+
+### Testing Callbacks
+
+1. Start the callback test server:
+
+```bash
+python tests/callback_server.py
+```
+
+2. In another terminal, run the test script:
+
+```bash
+python tests/test_callback.py
+```
+
+The callback server will log all received callbacks, including progress updates and the final result.
