@@ -17,6 +17,10 @@ from .common import _round_value
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Maximum file size (50MB)
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB in bytes
+
 @router.post("/process", 
     summary="Stream Building Element Analysis",
     description="""
@@ -72,14 +76,32 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
     """Process an IFC file and stream the results"""
     if not file.filename.endswith('.ifc'):
         raise HTTPException(status_code=400, detail="Invalid file type. Must be an IFC file.")
-        
-    # Save uploaded file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.ifc') as temp_file:
-        content = await file.read()
-        temp_file.write(content)
-        temp_path = temp_file.name
-
+    
+    # Check file size before processing
+    file_size = 0
+    temp_file = None
+    temp_path = None
+    
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.ifc') as temp_file:
+            temp_path = temp_file.name
+            chunk_size = 8192  # 8KB chunks
+            
+            while chunk := await file.read(chunk_size):
+                file_size += len(chunk)
+                if file_size > MAX_FILE_SIZE:
+                    # Clean up and raise error
+                    temp_file.close()
+                    os.unlink(temp_path)
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Maximum size is {MAX_FILE_SIZE/1024/1024:.1f}MB"
+                    )
+                temp_file.write(chunk)
+            
+            # Rewind file for reading
+            temp_file.flush()
+        
         ifc_file = ifcopenshell.open(temp_path)
         units = get_project_units(ifc_file)
         length_unit = units.get("LENGTHUNIT", {"type": "LENGTHUNIT", "name": "METER"})
@@ -87,7 +109,6 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
 
         async def generate_response():
             try:
-                # Get total elements for progress tracking 
                 building_elements = ifc_file.by_type("IfcBuildingElement")
                 total_elements = len(building_elements)
                 
@@ -99,10 +120,10 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                     "total": total_elements
                 }) + "\n"
                 
-                elements = []
                 last_progress = 0
+                
+                # Stream each element as it's processed
                 for i, element in enumerate(building_elements, 1):
-                    # Basic properties
                     element_data = {
                         "id": element.id(),
                         "ifc_entity": element.is_a(),
@@ -110,7 +131,6 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                         "object_type": get_object_type(element)
                     }
 
-                    # Add quantities
                     volume = get_volume_from_properties(element)
                     if volume:
                         element_data["volume"] = {
@@ -130,12 +150,9 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                             "height": _round_value(dimensions["height"])
                         }
 
-                    # Add materials
                     materials = material_service.get_element_materials(element)
                     if materials:
                         element_data["materials"] = materials
-                        
-                        # Add material volumes if available
                         material_volumes = material_service.get_material_volumes(element)
                         if material_volumes:
                             element_data["material_volumes"] = {
@@ -146,8 +163,12 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                                 }
                                 for mat, info in material_volumes.items()
                             }
-
-                    elements.append(element_data)
+                    
+                    # Stream each element immediately
+                    yield json.dumps({
+                        "status": "element",
+                        "data": element_data
+                    }) + "\n"
                     
                     # Report progress at 5% intervals
                     current_progress = (i / total_elements) * 100
@@ -160,10 +181,10 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                         }) + "\n"
                         last_progress = current_progress
 
-                # Final response with all elements
+                # Final response
                 yield json.dumps({
                     "status": "complete",
-                    "elements": elements
+                    "total_elements": total_elements
                 }) + "\n"
 
             except Exception as e:
@@ -172,14 +193,13 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                     "message": str(e)
                 }) + "\n"
                 raise
-
-        async def cleanup_background():
-            """Clean up files after response is sent"""
-            try:
+            finally:
+                # Clean up temp file
                 if temp_path and os.path.exists(temp_path):
-                    os.unlink(temp_path)
-            except Exception as e:
-                logger.error(f"Error during cleanup: {str(e)}")
+                    try:
+                        os.unlink(temp_path)
+                    except Exception as e:
+                        logger.error(f"Error cleaning up temp file: {str(e)}")
 
         return StreamingResponse(
             generate_response(),
@@ -187,11 +207,14 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
             headers={
                 "X-Content-Type-Options": "nosniff",
                 "Cache-Control": "no-cache"
-            },
-            background=cleanup_background
+            }
         )
 
     except Exception as e:
-        # Cleanup on error
-        os.unlink(temp_path)
+        # Ensure cleanup on any error
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
         raise HTTPException(status_code=400, detail=str(e))
