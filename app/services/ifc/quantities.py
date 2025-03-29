@@ -1,8 +1,15 @@
 from typing import Dict
 from functools import lru_cache
-from .properties import get_element_property
+from .properties import get_element_property, clear_property_caches
 
-@lru_cache(maxsize=1024)
+def clear_quantity_caches():
+    """Clear all quantity-related caches"""
+    get_volume_from_basequantities.cache_clear()
+    get_area_from_basequantities.cache_clear()
+    get_dimensions_from_basequantities.cache_clear()
+    clear_property_caches()
+
+@lru_cache(maxsize=128)
 def get_volume_from_basequantities(element) -> Dict:
     """Get volume quantities from base quantities."""
     net_volume = None
@@ -32,7 +39,7 @@ def get_volume_from_basequantities(element) -> Dict:
     
     return {"net": net_volume, "gross": gross_volume}
 
-@lru_cache(maxsize=1024)
+@lru_cache(maxsize=128)
 def get_area_from_basequantities(element) -> Dict:
     """Get area quantities from base quantities."""
     net_area = None
@@ -54,7 +61,7 @@ def get_area_from_basequantities(element) -> Dict:
     
     return {"net": net_area, "gross": gross_area}
 
-@lru_cache(maxsize=1024)
+@lru_cache(maxsize=128)
 def get_dimensions_from_basequantities(element) -> Dict:
     """Get dimensional quantities from base quantities."""
     dimensions = {
