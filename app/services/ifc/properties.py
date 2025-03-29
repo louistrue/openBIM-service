@@ -2,8 +2,15 @@ from typing import Dict, Optional, List
 import ifcopenshell
 from functools import lru_cache
 from datetime import datetime
+import gc
 
-@lru_cache(maxsize=1024)
+def clear_property_caches():
+    """Clear all LRU caches to free memory"""
+    get_element_property.cache_clear()
+    get_common_properties.cache_clear()
+    gc.collect()
+
+@lru_cache(maxsize=128)
 def get_element_property(element, property_name: str) -> Optional[str]:
     """Get property from element's property sets."""
     element_class = element.is_a()[3:]
@@ -87,7 +94,7 @@ def get_containment_structure(element) -> Dict:
     # Remove None values for cleaner output
     return {k: v for k, v in structure.items() if v is not None}
 
-@lru_cache(maxsize=1024)
+@lru_cache(maxsize=128)
 def get_common_properties(element) -> Dict:
     """Get common properties for an element including description, fire rating, etc."""
     properties = {

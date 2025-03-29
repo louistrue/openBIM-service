@@ -9,11 +9,13 @@ from app.services.ifc.properties import get_common_properties, get_object_type
 from app.services.ifc.quantities import (
     get_volume_from_properties,
     get_area_from_properties,
-    get_dimensions_from_properties
+    get_dimensions_from_properties,
+    clear_quantity_caches
 )
 from app.services.lca.materials import MaterialService
 from app.services.ifc.units import get_project_units, convert_unit_value
 from .common import _round_value
+import gc
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -106,100 +108,98 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
         units = get_project_units(ifc_file)
         length_unit = units.get("LENGTHUNIT", {"type": "LENGTHUNIT", "name": "METER"})
         material_service = MaterialService(ifc_file)
-
+        
         async def generate_response():
             try:
-                building_elements = ifc_file.by_type("IfcBuildingElement")
-                total_elements = len(building_elements)
+                # Clear caches before processing
+                clear_quantity_caches()
+                clear_property_caches()
+                gc.collect()
                 
-                # Initial progress
-                yield json.dumps({
-                    "status": "processing",
-                    "progress": 0,
-                    "processed": 0,
-                    "total": total_elements
-                }) + "\n"
+                total_elements = len(ifc_file.by_type("IfcProduct"))
+                processed = 0
                 
-                last_progress = 0
-                
-                # Stream each element as it's processed
-                for i, element in enumerate(building_elements, 1):
-                    element_data = {
-                        "id": element.id(),
-                        "ifc_entity": element.is_a(),
-                        "properties": get_common_properties(element),
-                        "object_type": get_object_type(element)
-                    }
-
-                    volume = get_volume_from_properties(element)
-                    if volume:
-                        element_data["volume"] = {
-                            "net": _round_value(volume["net"], 5) if "net" in volume else None,
-                            "gross": _round_value(volume["gross"], 5) if "gross" in volume else None
-                        }
-                    
-                    area = get_area_from_properties(element)
-                    if area:
-                        element_data["area"] = convert_unit_value(area, length_unit)
-                    
-                    dimensions = get_dimensions_from_properties(element)
-                    if dimensions:
-                        element_data["dimensions"] = {
-                            "length": _round_value(dimensions["length"]),
-                            "width": _round_value(dimensions["width"]),
-                            "height": _round_value(dimensions["height"])
+                for element in ifc_file.by_type("IfcProduct"):
+                    try:
+                        element_data = {
+                            "id": element.id(),
+                            "ifc_entity": element.is_a(),
+                            "properties": get_common_properties(element),
+                            "object_type": get_object_type(element)
                         }
 
-                    materials = material_service.get_element_materials(element)
-                    if materials:
-                        element_data["materials"] = materials
-                        material_volumes = material_service.get_material_volumes(element)
-                        if material_volumes:
-                            element_data["material_volumes"] = {
-                                mat: {
-                                    "volume": convert_unit_value(info["volume"], length_unit),
-                                    "fraction": info["fraction"],
-                                    "width": convert_unit_value(info["width"], length_unit) if "width" in info else None
-                                }
-                                for mat, info in material_volumes.items()
+                        volume = get_volume_from_properties(element)
+                        if volume:
+                            element_data["volume"] = {
+                                "net": _round_value(volume["net"], 5) if "net" in volume else None,
+                                "gross": _round_value(volume["gross"], 5) if "gross" in volume else None
                             }
-                    
-                    # Stream each element immediately
-                    yield json.dumps({
-                        "status": "element",
-                        "data": element_data
-                    }) + "\n"
-                    
-                    # Report progress at 5% intervals
-                    current_progress = (i / total_elements) * 100
-                    if current_progress >= last_progress + 5 or i == total_elements:
+                        
+                        area = get_area_from_properties(element)
+                        if area:
+                            element_data["area"] = convert_unit_value(area, length_unit)
+                        
+                        dimensions = get_dimensions_from_properties(element)
+                        if dimensions:
+                            element_data["dimensions"] = {
+                                "length": _round_value(dimensions["length"]),
+                                "width": _round_value(dimensions["width"]),
+                                "height": _round_value(dimensions["height"])
+                            }
+
+                        materials = material_service.get_element_materials(element)
+                        if materials:
+                            element_data["materials"] = materials
+                            material_volumes = material_service.get_material_volumes(element)
+                            if material_volumes:
+                                element_data["material_volumes"] = {
+                                    mat: {
+                                        "volume": convert_unit_value(info["volume"], length_unit),
+                                        "fraction": info["fraction"],
+                                        "width": convert_unit_value(info["width"], length_unit) if "width" in info else None
+                                    }
+                                    for mat, info in material_volumes.items()
+                                }
+                        
+                        # Stream each element immediately
                         yield json.dumps({
-                            "status": "processing",
-                            "progress": current_progress,
-                            "processed": i,
-                            "total": total_elements
+                            "status": "element",
+                            "data": element_data
                         }) + "\n"
-                        last_progress = current_progress
-
-                # Final response
-                yield json.dumps({
-                    "status": "complete",
-                    "total_elements": total_elements
-                }) + "\n"
-
-            except Exception as e:
-                yield json.dumps({
-                    "status": "error",
-                    "message": str(e)
-                }) + "\n"
-                raise
+                        
+                        processed += 1
+                        if processed % 50 == 0:
+                            # Clear caches periodically during processing
+                            clear_quantity_caches()
+                            clear_property_caches()
+                            gc.collect()
+                            
+                        # Yield progress
+                        progress = (processed / total_elements) * 100
+                        yield f'{{"status": "processing", "progress": {progress:.1f}, "processed": {processed}, "total": {total_elements}}}\n'
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing element {element.id()}: {str(e)}")
+                        continue
+                
+                # Clear caches after processing
+                clear_quantity_caches()
+                clear_property_caches()
+                gc.collect()
+                
+                # Yield final result
+                yield '{"status": "complete"}\n'
+                
             finally:
-                # Clean up temp file
+                # Clean up temp file and clear memory
                 if temp_path and os.path.exists(temp_path):
                     try:
                         os.unlink(temp_path)
                     except Exception as e:
                         logger.error(f"Error cleaning up temp file: {str(e)}")
+                
+                # Force garbage collection
+                gc.collect()
 
         return StreamingResponse(
             generate_response(),
@@ -217,4 +217,10 @@ async def process_ifc(file: UploadFile = File(...)) -> StreamingResponse:
                 os.unlink(temp_path)
             except:
                 pass
+        
+        # Clear caches and force garbage collection
+        clear_quantity_caches()
+        clear_property_caches()
+        gc.collect()
+        
         raise HTTPException(status_code=400, detail=str(e))
